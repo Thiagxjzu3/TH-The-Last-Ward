@@ -1,5 +1,5 @@
 
-#iinclude <stdio.h>
+#include <stdio.h>
 #include "th_config.h"
 
 namespace THCamera
