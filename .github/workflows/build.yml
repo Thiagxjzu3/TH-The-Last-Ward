@@ -1,0 +1,50 @@
+
+name: Build TH The Last Ward
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl tar
+
+      - name: Download PS3 toolchain
+        run: |
+          curl -L https://cdn.hddj.top/ps3dev/ps3toolchain/releases/download/2026-06-09/ps3dev-92534e60-ubuntu-latest.tar.gz -o ps3dev.tar.gz
+          tar -xzf ps3dev.tar.gz
+
+          echo "PS3DEV=$GITHUB_WORKSPACE/ps3dev" >> $GITHUB_ENV
+          echo "PSL1GHT=$GITHUB_WORKSPACE/ps3dev" >> $GITHUB_ENV
+
+          echo "$GITHUB_WORKSPACE/ps3dev/bin" >> $GITHUB_PATH
+          echo "$GITHUB_WORKSPACE/ps3dev/ppu/bin" >> $GITHUB_PATH
+          echo "$GITHUB_WORKSPACE/ps3dev/spu/bin" >> $GITHUB_PATH
+
+      - name: Verify PS3 compiler
+        run: |
+          ppu-gcc --version
+
+      - name: Compile game
+        run: |
+          make clean
+          make
+
+      - name: Upload compiled game
+        uses: actions/upload-artifact@v4
+        with:
+          name: TH-The-Last-Ward-ELF
+          path: THTheLastWard.elf
+          if-no-files-found: error
