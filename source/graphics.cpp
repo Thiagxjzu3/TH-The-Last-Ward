@@ -1,34 +1,70 @@
 
 #include <stdio.h>
-#include <rsx/rsx.h>
-#include <sysutil/video.h>
+
+#include "th_graphics.h"
+#include "rsxutil.h"
 
 namespace THGraphics
 {
-    bool initialized = false;
+    static bool initialized = false;
+
+    static unsigned int ConvertColor(float value)
+    {
+        if (value < 0.0f)
+            value = 0.0f;
+
+        if (value > 1.0f)
+            value = 1.0f;
+
+        return (unsigned int)(value * 255.0f + 0.5f);
+    }
 
     bool Init()
     {
-        printf("[GRAPHICS] Initializing video system...\n");
+        if (initialized)
+            return true;
 
-        videoState state = {};
+        printf("[GRAPHICS] Initializing RSX...\n");
 
-        if (videoGetState(VIDEO_PRIMARY, 0, &state) != 0)
+        if (!THRSX::Init())
         {
-            printf("[GRAPHICS] Video state error.\n");
+            printf("[GRAPHICS] RSX initialization failed.\n");
             return false;
         }
-
-        if (state.state != VIDEO_STATE_ENABLED)
-        {
-            printf("[GRAPHICS] Video output is not enabled.\n");
-            return false;
-        }
-
-        printf("[GRAPHICS] Video system detected.\n");
 
         initialized = true;
+
+        printf("[GRAPHICS] RSX initialized.\n");
+
         return true;
+    }
+
+    void Clear(float red, float green, float blue)
+    {
+        if (!initialized)
+            return;
+
+        unsigned int r = ConvertColor(red);
+        unsigned int g = ConvertColor(green);
+        unsigned int b = ConvertColor(blue);
+
+        unsigned int color =
+            (r << 16) |
+            (g << 8) |
+            b;
+
+        THRSX::Clear(color);
+    }
+
+    void Present()
+    {
+        if (!initialized)
+            return;
+
+        if (!THRSX::Present())
+        {
+            printf("[GRAPHICS] Frame presentation failed.\n");
+        }
     }
 
     void Shutdown()
@@ -36,7 +72,10 @@ namespace THGraphics
         if (!initialized)
             return;
 
-        printf("[GRAPHICS] Graphics module stopped.\n");
+        THRSX::Shutdown();
+
         initialized = false;
+
+        printf("[GRAPHICS] Graphics stopped.\n");
     }
 }
