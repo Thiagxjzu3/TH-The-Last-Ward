@@ -9,8 +9,8 @@ APPID := THLW0001
 
 OFILES := $(patsubst %.cpp,%.o,$(wildcard source/*.cpp))
 
-CXXFLAGS += -Iinclude -O2 -Wall -Wextra
-CFLAGS += -Iinclude -O2 -Wall -Wextra
+CXXFLAGS += -Iinclude $(LIBPSL1GHT_INC) -O2 -Wall -Wextra
+CFLAGS += -Iinclude $(LIBPSL1GHT_INC) -O2 -Wall -Wextra
 
 LDFLAGS +=
 LIBPATHS += $(LIBPSL1GHT_LIB)
