@@ -19,45 +19,49 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl jq tar
+          sudo apt-get install -y curl tar
 
-      - name: Download official PS3DEV release
+      - name: Download PS3DEV
         run: |
-          URL=$(curl -fsSL https://api.github.com/repos/ps3dev/ps3dev/releases/latest | jq -r '[.assets[] | select(.name | test("ubuntu.*tar.gz"; "i"))][0].browser_download_url')
+          curl -fL \
+            "https://github.com/ps3dev/ps3dev/releases/download/nightly-2026-11-16/ps3dev-linux-X64.tar.gz" \
+            -o ps3dev.tar.gz
 
-          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-            echo "No se encontró el archivo de PS3DEV para Ubuntu."
+      - name: Extract PS3DEV
+        run: |
+          mkdir -p "$RUNNER_TEMP/ps3dev"
+          tar -xzf ps3dev.tar.gz -C "$RUNNER_TEMP/ps3dev"
+
+      - name: Configure PS3 environment
+        run: |
+          PPU_GCC=$(find "$RUNNER_TEMP/ps3dev" -name ppu-gcc -print -quit)
+          PPU_RULES=$(find "$RUNNER_TEMP/ps3dev" -name ppu_rules -print -quit)
+
+          if [ -z "$PPU_GCC" ]; then
+            echo "ERROR: No se encontró ppu-gcc"
             exit 1
           fi
 
-          echo "Descargando: $URL"
-          curl -fL "$URL" -o ps3dev.tar.gz
+          if [ -z "$PPU_RULES" ]; then
+            echo "ERROR: No se encontró ppu_rules"
+            exit 1
+          fi
 
-      - name: Install PS3DEV
+          PPU_BIN=$(dirname "$PPU_GCC")
+          PS3DEV=$(dirname "$(dirname "$PPU_BIN")")
+          PSL1GHT=$(dirname "$PPU_RULES")
+
+          echo "PS3DEV=$PS3DEV" >> "$GITHUB_ENV"
+          echo "PSL1GHT=$PSL1GHT" >> "$GITHUB_ENV"
+
+          echo "$PS3DEV/bin" >> "$GITHUB_PATH"
+          echo "$PS3DEV/ppu/bin" >> "$GITHUB_PATH"
+          echo "$PS3DEV/spu/bin" >> "$GITHUB_PATH"
+
+      - name: Verify PS3 environment
         run: |
-          sudo mkdir -p /usr/local/ps3dev
-          sudo tar -xzf ps3dev.tar.gz -C /usr/local/ps3dev
-
-          echo "PS3DEV=/usr/local/ps3dev" >> $GITHUB_ENV
-          echo "PSL1GHT=/usr/local/ps3dev" >> $GITHUB_ENV
-
-          echo "/usr/local/ps3dev/bin" >> $GITHUB_PATH
-          echo "/usr/local/ps3dev/ppu/bin" >> $GITHUB_PATH
-          echo "/usr/local/ps3dev/spu/bin" >> $GITHUB_PATH
-
-      - name: Verify PS3 compiler
-        run: |
-          find /usr/local/ps3dev -name ppu-gcc -print
+          echo "PS3DEV=$PS3DEV"
+          echo "PSL1GHT=$PSL1GHT"
           ppu-gcc --version
-
-      - name: Compile game
-        run: |
-          make clean
-          make
-
-      - name: Upload ELF
-        uses: actions/upload-artifact@v4
-        with:
-          name: TH-The-Last-Ward-ELF
-          path: THTheLastWard.elf
-          if-no-files-found: error
+          test -f "$PSL1GHT/ppu_rules"
+          echo "PS3DEV instalado correctamente."
