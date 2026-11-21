@@ -1,291 +1,269 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <malloc.h>
+#include <string.h>
 #include <unistd.h>
+
 #include <ppu-types.h>
-#include <sysutil/video.h>
 #include <rsx/rsx.h>
+#include <sysutil/video.h>
 
 #include "rsxutil.h"
 
-#define GCM_LABEL_INDEX 255
-
-videoResolution vResolution;
-
-gcmContextData *context = NULL;
-
-u32 curr_fb = 0;
-static u32 first_fb = 1;
-
-u32 display_width = 0;
-u32 display_height = 0;
-
-u32 depth_pitch = 0;
-u32 depth_offset = 0;
-u32 *depth_buffer = NULL;
-
-u32 color_pitch = 0;
-u32 color_offset[FRAME_BUFFER_COUNT];
-u32 *color_buffer[FRAME_BUFFER_COUNT];
-
-f32 aspect_ratio = 16.0f / 9.0f;
-
-static u32 resolution_ids[] = {
-    VIDEO_RESOLUTION_720,
-    VIDEO_RESOLUTION_480,
-    VIDEO_RESOLUTION_576
-};
-
-static u32 label_value = 1;
-
-static void waitFinish()
+namespace THRSX
 {
-    rsxSetWriteBackendLabel(
-        context,
-        GCM_LABEL_INDEX,
-        label_value
-    );
+    static gcmContextData *context = NULL;
 
-    rsxFlushBuffer(context);
+    static void *ioBuffer = NULL;
 
-    while (*(volatile u32*)gcmGetLabelAddress(GCM_LABEL_INDEX)
-           != label_value)
+    static u32 *frameBuffers[TH_RSX_FRAMEBUFFER_COUNT] = {
+        NULL, NULL
+    };
+
+    static u32 frameOffsets[TH_RSX_FRAMEBUFFER_COUNT] = {
+        0, 0
+    };
+
+    static u32 width = 0;
+    static u32 height = 0;
+    static u32 pitch = 0;
+
+    static u32 drawBuffer = 0;
+    static bool initialized = false;
+
+    static bool ConfigureVideo()
     {
-        usleep(30);
-    }
+        const u32 resolutions[] = {
+            VIDEO_RESOLUTION_720,
+            VIDEO_RESOLUTION_480,
+            VIDEO_RESOLUTION_576
+        };
 
-    label_value++;
-}
+        videoResolution resolution;
+        s32 result = -1;
+        u32 selectedResolution = 0;
 
-static void waitRSXIdle()
-{
-    rsxSetWriteBackendLabel(
-        context,
-        GCM_LABEL_INDEX,
-        label_value
-    );
+        for (u32 i = 0;
+             i < sizeof(resolutions) / sizeof(resolutions[0]);
+             i++)
+        {
+            result = videoGetResolutionAvailability(
+                VIDEO_PRIMARY,
+                resolutions[i],
+                VIDEO_ASPECT_AUTO,
+                0
+            );
 
-    rsxSetWaitLabel(
-        context,
-        GCM_LABEL_INDEX,
-        label_value
-    );
+            if (result != 1)
+                continue;
 
-    label_value++;
+            result = videoGetResolution(
+                resolutions[i],
+                &resolution
+            );
 
-    waitFinish();
-}
+            if (result == 0)
+            {
+                selectedResolution = resolutions[i];
+                break;
+            }
+        }
 
-static bool initVideoConfiguration()
-{
-    s32 result = -1;
-    u32 resolution_id = 0;
+        if (selectedResolution == 0)
+        {
+            printf("[RSX] No supported resolution.\n");
+            return false;
+        }
 
-    for (u32 i = 0;
-         i < sizeof(resolution_ids) / sizeof(resolution_ids[0]);
-         i++)
-    {
-        result = videoGetResolutionAvailability(
+        videoConfiguration config = {};
+
+        config.resolution = (u8)selectedResolution;
+        config.format = VIDEO_BUFFER_FORMAT_XRGB;
+        config.aspect = VIDEO_ASPECT_AUTO;
+        config.pitch = resolution.width * 4;
+
+        result = videoConfigure(
             VIDEO_PRIMARY,
-            resolution_ids[i],
-            VIDEO_ASPECT_AUTO,
+            &config,
+            NULL,
             0
         );
 
-        if (result != 1)
-            continue;
+        if (result != 0)
+        {
+            printf("[RSX] Video configuration failed.\n");
+            return false;
+        }
 
-        resolution_id = resolution_ids[i];
+        width = resolution.width;
+        height = resolution.height;
+        pitch = width * 4;
 
-        result = videoGetResolution(
-            resolution_id,
-            &vResolution
+        printf("[RSX] Resolution: %ux%u\n", width, height);
+
+        return true;
+    }
+
+    bool Init()
+    {
+        if (initialized)
+            return true;
+
+        printf("[RSX] Initializing...\n");
+
+        ioBuffer = memalign(
+            1024 * 1024,
+            TH_RSX_IO_BUFFER_SIZE
         );
 
-        if (result == 0)
-            break;
-    }
+        if (!ioBuffer)
+        {
+            printf("[RSX] IO memory allocation failed.\n");
+            return false;
+        }
 
-    if (result != 0)
-    {
-        printf("[RSX] No usable resolution found.\n");
-        return false;
-    }
+        memset(ioBuffer, 0, TH_RSX_IO_BUFFER_SIZE);
 
-    videoConfiguration config = {
-        (u8)resolution_id,
-        VIDEO_BUFFER_FORMAT_XRGB,
-        VIDEO_ASPECT_AUTO,
-        {0,0,0,0,0,0,0,0,0},
-        (u32)vResolution.width * 4
-    };
+        if (rsxInit(
+            &context,
+            TH_RSX_COMMAND_BUFFER_SIZE,
+            TH_RSX_IO_BUFFER_SIZE,
+            ioBuffer
+        ) != 0)
+        {
+            printf("[RSX] Context initialization failed.\n");
+            free(ioBuffer);
+            ioBuffer = NULL;
+            context = NULL;
+            return false;
+        }
 
-    result = videoConfigure(
-        VIDEO_PRIMARY,
-        &config,
-        NULL,
-        0
-    );
+        if (!ConfigureVideo())
+        {
+            printf("[RSX] Video initialization failed.\n");
+            return false;
+        }
 
-    if (result != 0)
-    {
-        printf("[RSX] Video configuration failed.\n");
-        return false;
-    }
+        gcmSetFlipMode(GCM_FLIP_VSYNC);
 
-    videoState state;
+        for (u32 i = 0; i < TH_RSX_FRAMEBUFFER_COUNT; i++)
+        {
+            frameBuffers[i] = (u32*)rsxMemalign(
+                64,
+                height * pitch
+            );
 
-    result = videoGetState(
-        VIDEO_PRIMARY,
-        0,
-        &state
-    );
+            if (!frameBuffers[i])
+            {
+                printf("[RSX] Framebuffer allocation failed.\n");
+                return false;
+            }
 
-    if (result != 0)
-        return false;
+            memset(frameBuffers[i], 0, height * pitch);
 
-    if (state.displayMode.aspect == VIDEO_ASPECT_4_3)
-        aspect_ratio = 4.0f / 3.0f;
-    else
-        aspect_ratio = 16.0f / 9.0f;
+            if (rsxAddressToOffset(
+                frameBuffers[i],
+                &frameOffsets[i]
+            ) != 0)
+            {
+                printf("[RSX] Framebuffer offset failed.\n");
+                return false;
+            }
 
-    display_width = vResolution.width;
-    display_height = vResolution.height;
+            gcmSetDisplayBuffer(
+                i,
+                frameOffsets[i],
+                pitch,
+                width,
+                height
+            );
+        }
 
-    return true;
-}
-
-void setRenderTarget(u32 index)
-{
-    gcmSurface surface = {};
-
-    surface.colorFormat = GCM_SURFACE_X8R8G8B8;
-    surface.colorTarget = GCM_SURFACE_TARGET_0;
-
-    surface.colorLocation[0] = GCM_LOCATION_RSX;
-    surface.colorOffset[0] = color_offset[index];
-    surface.colorPitch[0] = color_pitch;
-
-    surface.colorLocation[1] = GCM_LOCATION_RSX;
-    surface.colorLocation[2] = GCM_LOCATION_RSX;
-    surface.colorLocation[3] = GCM_LOCATION_RSX;
-
-    surface.colorOffset[1] = 0;
-    surface.colorOffset[2] = 0;
-    surface.colorOffset[3] = 0;
-
-    surface.colorPitch[1] = 64;
-    surface.colorPitch[2] = 64;
-    surface.colorPitch[3] = 64;
-
-    surface.depthFormat = GCM_SURFACE_ZETA_Z24S8;
-    surface.depthLocation = GCM_LOCATION_RSX;
-    surface.depthOffset = depth_offset;
-    surface.depthPitch = depth_pitch;
-
-    surface.type = GCM_SURFACE_TYPE_LINEAR;
-    surface.antiAlias = GCM_SURFACE_CENTER_1;
-
-    surface.width = display_width;
-    surface.height = display_height;
-
-    surface.x = 0;
-    surface.y = 0;
-
-    rsxSetSurface(context, &surface);
-}
-
-void init_screen(void *host_addr, u32 size)
-{
-    const u32 color_depth = 4;
-    const u32 depth_size = 4;
-
-    if (rsxInit(
-        &context,
-        DEFAULT_CB_SIZE,
-        size,
-        host_addr
-    ) != 0)
-    {
-        printf("[RSX] Context initialization failed.\n");
-        exit(1);
-    }
-
-    if (!initVideoConfiguration())
-        exit(1);
-
-    waitRSXIdle();
-
-    gcmSetFlipMode(GCM_FLIP_VSYNC);
-
-    color_pitch = display_width * color_depth;
-    depth_pitch = display_width * depth_size;
-
-    for (u32 i = 0; i < FRAME_BUFFER_COUNT; i++)
-    {
-        color_buffer[i] = (u32*)rsxMemalign(
-            64,
-            display_height * color_pitch
-        );
-
-        if (!color_buffer[i])
-            exit(1);
-
-        rsxAddressToOffset(
-            color_buffer[i],
-            &color_offset[i]
-        );
-
-        gcmSetDisplayBuffer(
-            i,
-            color_offset[i],
-            color_pitch,
-            display_width,
-            display_height
-        );
-    }
-
-    depth_buffer = (u32*)rsxMemalign(
-        64,
-        display_height * depth_pitch
-    );
-
-    if (!depth_buffer)
-        exit(1);
-
-    rsxAddressToOffset(
-        depth_buffer,
-        &depth_offset
-    );
-
-    printf("[RSX] Screen initialized: %ux%u\n",
-           display_width,
-           display_height);
-}
-
-static void waitflip()
-{
-    while (gcmGetFlipStatus() != 0)
-        usleep(200);
-
-    gcmResetFlipStatus();
-}
-
-void flip()
-{
-    if (!first_fb)
-        waitflip();
-    else
         gcmResetFlipStatus();
 
-    gcmSetFlip(context, curr_fb);
+        drawBuffer = 0;
+        initialized = true;
 
-    rsxFlushBuffer(context);
-    gcmSetWaitFlip(context);
+        printf("[RSX] Initialization complete.\n");
 
-    curr_fb ^= 1;
+        return true;
+    }
 
-    setRenderTarget(curr_fb);
+    void Clear(u32 color)
+    {
+        if (!initialized)
+            return;
 
-    first_fb = 0;
+        u32 *pixels = frameBuffers[drawBuffer];
+
+        if (!pixels)
+            return;
+
+        u32 count = width * height;
+
+        for (u32 i = 0; i < count; i++)
+        {
+            pixels[i] = color;
+        }
+    }
+
+    bool Present()
+    {
+        if (!initialized || !context)
+            return false;
+
+        while (gcmGetFlipStatus() != 0)
+        {
+            usleep(200);
+        }
+
+        gcmSetFlip(context, drawBuffer);
+
+        rsxFlushBuffer(context);
+
+        gcmSetWaitFlip(context);
+
+        drawBuffer ^= 1;
+
+        return true;
+    }
+
+    u32 GetWidth()
+    {
+        return width;
+    }
+
+    u32 GetHeight()
+    {
+        return height;
+    }
+
+    void Shutdown()
+    {
+        if (!initialized)
+            return;
+
+        printf("[RSX] Shutting down.\n");
+
+        initialized = false;
+
+        /*
+         * RSX allocations remain managed by the RSX
+         * memory manager until process termination.
+         */
+
+        context = NULL;
+
+        if (ioBuffer)
+        {
+            free(ioBuffer);
+            ioBuffer = NULL;
+        }
+
+        width = 0;
+        height = 0;
+        pitch = 0;
+        drawBuffer = 0;
+    }
 }
