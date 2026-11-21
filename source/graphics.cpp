@@ -1,7 +1,6 @@
 
 #include <stdio.h>
 
-#include "th_graphics.h"
 #include "rsxutil.h"
 
 namespace THGraphics
@@ -35,7 +34,6 @@ namespace THGraphics
         initialized = true;
 
         printf("[GRAPHICS] RSX initialized.\n");
-
         return true;
     }
 
@@ -62,9 +60,7 @@ namespace THGraphics
             return;
 
         if (!THRSX::Present())
-        {
             printf("[GRAPHICS] Frame presentation failed.\n");
-        }
     }
 
     void Shutdown()
@@ -73,7 +69,6 @@ namespace THGraphics
             return;
 
         THRSX::Shutdown();
-
         initialized = false;
 
         printf("[GRAPHICS] Graphics stopped.\n");
