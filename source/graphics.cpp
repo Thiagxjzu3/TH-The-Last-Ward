@@ -1,7 +1,7 @@
 
 #include <stdio.h>
 #include <rsx/rsx.h>
-#include <video/video.h>
+#include <sysutil/video.h>
 
 namespace THGraphics
 {
@@ -9,13 +9,19 @@ namespace THGraphics
 
     bool Init()
     {
-        printf("[GRAPHICS] Initializing RSX...\n");
+        printf("[GRAPHICS] Initializing video system...\n");
 
-        videoState state;
+        videoState state = {};
 
-        if (videoGetState(0, 0, &state) != 0)
+        if (videoGetState(VIDEO_PRIMARY, 0, &state) != 0)
         {
             printf("[GRAPHICS] Video state error.\n");
+            return false;
+        }
+
+        if (state.state != VIDEO_STATE_ENABLED)
+        {
+            printf("[GRAPHICS] Video output is not enabled.\n");
             return false;
         }
 
@@ -30,7 +36,7 @@ namespace THGraphics
         if (!initialized)
             return;
 
-        printf("[GRAPHICS] Shutdown.\n");
+        printf("[GRAPHICS] Graphics module stopped.\n");
         initialized = false;
     }
 }
