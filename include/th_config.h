@@ -1,0 +1,21 @@
+
+#ifndef TH_CONFIG_H
+#define TH_CONFIG_H
+
+#define TH_GAME_NAME "TH: THE LAST WARD"
+#define TH_ENGINE_NAME "TH HORROR ENGINE"
+
+#define TH_VERSION_MAJOR 0
+#define TH_VERSION_MINOR 1
+#define TH_VERSION_PATCH 0
+
+#define TH_SCREEN_WIDTH 1280
+#define TH_SCREEN_HEIGHT 720
+
+#define TH_PLAYER_SPEED 4.0f
+#define TH_MOUSE_SENSITIVITY 0.15f
+
+#define TH_ENABLE_AUDIO 1
+#define TH_ENABLE_DEBUG 1
+
+#endif
