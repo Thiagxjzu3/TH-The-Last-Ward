@@ -1,21 +1,34 @@
 
-TARGET      := THTheLastWard
-BUILD       := build
-SOURCES     := source
-INCLUDES    := include
+.SUFFIXES:
 
-CFILES      :=
-CPPFILES    := $(foreach dir,$(SOURCES),$(wildcard $(dir)/*.cpp))
-AFILES      :=
+.DEFAULT_GOAL := all
 
-OBJS        := $(CPPFILES:.cpp=.o)
-OBJS        += $(CFILES:.c=.o)
+TARGET := THTheLastWard
+TITLE := TH: THE LAST WARD
+APPID := THLW0001
 
-LIBS        :=
+OFILES := $(patsubst %.cpp,%.o,$(wildcard source/*.cpp))
 
-CXXFLAGS    := -O2 -Wall -Wextra
-CFLAGS      := -O2 -Wall -Wextra
-LDFLAGS     :=
+CXXFLAGS += -Iinclude -O2 -Wall -Wextra
+CFLAGS += -Iinclude -O2 -Wall -Wextra
+
+LDFLAGS +=
+
+PKGFILES := data
 
 include $(PSL1GHT)/ppu_rules
 
+.PHONY: all pkg clean
+
+all: $(TARGET).elf
+
+pkg: $(TARGET).pkg
+
+clean:
+	rm -f source/*.o
+	rm -f $(TARGET).elf
+	rm -f $(TARGET).self
+	rm -f $(TARGET).fake.self
+	rm -f $(TARGET).pkg
+	rm -f $(TARGET).gnpdrm.pkg
+	rm -rf build
