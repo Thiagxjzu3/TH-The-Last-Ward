@@ -5,7 +5,8 @@
 
 TARGET := THTheLastWard
 TITLE := TH: THE LAST WARD
-APPID := THLW0001
+APPID := THLW00001
+CONTENTID := UP0001-$(APPID)_00-0000000000000000
 
 OFILES := $(patsubst %.cpp,%.o,$(wildcard source/*.cpp))
 
