@@ -26,9 +26,8 @@ int main()
 {
     printf("================================\n");
     printf("      TH: THE LAST WARD\n");
+    printf("      GRAPHICS TEST\n");
     printf("================================\n");
-
-    printf("[TH] Starting game engine...\n");
 
     if (!THGraphics::Init())
     {
@@ -36,12 +35,7 @@ int main()
         return 1;
     }
 
-    printf("[TH] Graphics module ready.\n");
-
     bool padReady = (ioPadInit(7) == 0);
-
-    if (!padReady)
-        printf("[TH] Controller initialization failed.\n");
 
     sysUtilRegisterCallback(
         SYSUTIL_EVENT_SLOT0,
@@ -49,10 +43,20 @@ int main()
         NULL
     );
 
-    printf("[TH] Main loop started.\n");
-
     padInfo info = {};
     padData data = {};
+
+    unsigned int frame = 0;
+    unsigned int colorIndex = 0;
+
+    const float colors[4][3] = {
+        {0.08f, 0.02f, 0.02f},
+        {0.02f, 0.12f, 0.04f},
+        {0.02f, 0.05f, 0.16f},
+        {0.015f, 0.020f, 0.030f}
+    };
+
+    printf("[TH] Graphics test started.\n");
 
     while (running)
     {
@@ -75,13 +79,24 @@ int main()
             }
         }
 
-        THGraphics::Clear(0.015f, 0.020f, 0.030f);
+        THGraphics::Clear(
+            colors[colorIndex][0],
+            colors[colorIndex][1],
+            colors[colorIndex][2]
+        );
+
         THGraphics::Present();
+
+        frame++;
+
+        if (frame >= 180)
+        {
+            frame = 0;
+            colorIndex = (colorIndex + 1) % 4;
+        }
 
         usleep(16000);
     }
-
-    printf("[TH] Closing game...\n");
 
     sysUtilUnregisterCallback(SYSUTIL_EVENT_SLOT0);
 
@@ -90,7 +105,7 @@ int main()
 
     THGraphics::Shutdown();
 
-    printf("[TH] Shutdown complete.\n");
+    printf("[TH] Graphics test finished.\n");
 
     return 0;
 }
