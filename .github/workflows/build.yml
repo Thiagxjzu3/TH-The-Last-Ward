@@ -43,7 +43,7 @@ jobs:
           fi
 
           PPU_BIN=$(dirname "$PPU_GCC")
-          PS3DEV=$(dirname "$PPU_BIN")
+          PS3DEV=$(dirname "$(dirname "$PPU_BIN")")
           PSL1GHT=$(dirname "$PPU_RULES")
 
           echo "PS3DEV=$PS3DEV" >> "$GITHUB_ENV"
@@ -56,16 +56,32 @@ jobs:
         run: |
           ppu-gcc --version
           test -f "$PSL1GHT/ppu_rules"
-          echo "PS3DEV listo."
+          test -f "$PS3DEV/bin/sfo.xml"
+          test -f "$PS3DEV/bin/ICON0.PNG"
+          command -v make_self_npdrm
+          command -v package_finalize
+          echo "PS3DEV y herramientas de empaquetado listos."
 
-      - name: Compile TH The Last Ward
+      - name: Compile and package TH The Last Ward
         run: |
           make clean
-          make LD=ppu-gcc
+          make LD=ppu-gcc pkg
 
-      - name: Upload ELF
+      - name: Verify package outputs
+        run: |
+          test -s THTheLastWard.elf
+          test -s THTheLastWard.self
+          test -s THTheLastWard.pkg
+          test -s THTheLastWard.gnpdrm.pkg
+          ls -lh THTheLastWard.elf THTheLastWard.self THTheLastWard.pkg THTheLastWard.gnpdrm.pkg
+
+      - name: Upload PS3 build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: TH-The-Last-Ward-ELF
-          path: THTheLastWard.elf
+          name: TH-The-Last-Ward-PS3-Build
+          path: |
+            THTheLastWard.elf
+            THTheLastWard.self
+            THTheLastWard.pkg
+            THTheLastWard.gnpdrm.pkg
           if-no-files-found: error
